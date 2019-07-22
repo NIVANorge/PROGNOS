@@ -6,13 +6,14 @@ import os.path
 import fileinput
 from urllib.parse import urljoin
 from IPython.display import clear_output, display
+import collections
 
 class CloudInterface(object):
         
     options = {'stdout': PIPE, 'stderr': PIPE, 'bufsize' : 1, 'universal_newlines' : True, 'shell' : False}
     system = 'Linux'
-   
-  
+     
+ 
     def __init__(self,machineInfo):
 
         self.storageFolder=''
@@ -20,6 +21,7 @@ class CloudInterface(object):
         self.out = ''
         self.instantiationString = ''
         self.instanceExists = False
+        
         CloudInterface.system = platform.system()
         if (CloudInterface.system == 'Windows'):
             CloudInterface.options['shell'] = True
@@ -39,9 +41,11 @@ class CloudInterface(object):
                 for line in p.stdout:
                     print(line, end='')
             if verbose and overwrite:
+                dq = collections.deque(maxlen=10)
                 for line in p.stdout:
+                    dq.append(line)
                     clear_output(wait=True)
-                    print(additionalDisplay,line)
+                    print(additionalDisplay,''.join(list(dq)),sep='\n')
             for line in p.stderr:
                 print(line, end='')
             if p.returncode != (0 or None):
@@ -55,7 +59,7 @@ class CloudInterface(object):
                 if re.match('^{instance}'.format(**self.machineInfo), line):
                     self.instanceExists=True
                     ip = line.strip().split()
-                    self.ip = ip[4]
+                    self.ip = ip[-2]
             for line in p.stderr:
                 print(line, end='')
             if p.returncode != (0 or None):
@@ -157,6 +161,7 @@ class CloudInterface(object):
 
     def setFab(self):
         if CloudInterface.system == 'Linux':
+#             display(self.fabfile,os.getcwd())
             cmd = "sed -i s/^env\.hosts.*/env.hosts=\['{}']/ {}".format(self.ip,self.fabfile)
             self.callPopen(cmd)
             cmd = "sed -i s/^env\.user.*/env.user=\'{}\'/ {}".format(self.machineInfo['username'],self.fabfile)
