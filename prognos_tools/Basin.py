@@ -8,8 +8,8 @@ class Basin(CloudInterface):
 --zone={region} 
 --machine-type={machineType} 
 --image={image}
---image-project=nivacatchment 
---boot-disk-size=200GB         
+--image-project={imageProject} 
+--boot-disk-size={diskSize}
 --boot-disk-device-name={instance}
 --tags=http-server,https-server,postgres
 '''     
@@ -49,7 +49,7 @@ do
   #Placing the basin shapefile in the results table    
   read -r -d '' SQL <<- EOM
       INSERT INTO {0}.resultsShp(station_id,station_name,basin)
-      SELECT b.station_id, b.station_name, ST_Multi(ST_Union(a.geom))
+      SELECT b.station_id, b.station_name, ST_MakeValid(ST_Multi(ST_Union(a.geom)))
       FROM {0}.stations AS b, {0}.dummy AS a
       WHERE b.station_id=${{id}}
       GROUP BY station_id, station_name;
@@ -111,8 +111,11 @@ ncrcat ./tmp/*.nc {out}
 rm -rf ./tmp
 '''
     
+    vmScript=''
+    
     def __init__(self,machineInfo):
-#         self.saveFolder = './'
+        self.saveFolder = './'
+        self.vmScript=''
         super().__init__(machineInfo)
         
     def instantiate(self,fabfile=''):
@@ -140,8 +143,9 @@ rm -rf ./tmp
     
         
     def getBasinLayers(self,yamlFile,schema,saveFolder='./'):
-        self.saveFolder=saveFolder
+        self.saveFolder = saveFolder
         if (self.saveFolder != './'):
+            display('Directory should be created')            
             self.callPopen('rm -rf {}'.format(self.saveFolder))
             self.callPopen('mkdir -p {}'.format(self.saveFolder))
         print("Gonna create the getBasin.sh file")
@@ -151,7 +155,7 @@ rm -rf ./tmp
         with open(basinScript,'w') as f:
             f.write( Basin.getBasinScript.format(schema,ids,array) )
         #Delineating basin on server
-        cmd = 'fab -f {} processScript:{},{}'.format(self.fabfile,basinScript,os.path.join(saveFolder,'box.txt'))
+        cmd = 'fab -f {} runScript:{},{},{}'.format(self.fabfile,basinScript,True,os.path.join(saveFolder,'box.txt'))
         print(cmd)
         self.callPopen(cmd)
 
@@ -159,7 +163,7 @@ rm -rf ./tmp
         gmapScript = os.path.join(saveFolder,'gmaps.sh')
         with open(gmapScript,'w') as f:
             f.write(Basin.getGmapsLayers.format(schema) )   
-        cmd = 'fab -f {} processScript:{},{}'.format(self.fabfile,gmapScript,os.path.join(saveFolder,'gmaps.txt'))
+        cmd = 'fab -f {} runScript:{},{},{}'.format(self.fabfile,gmapScript,True,os.path.join(saveFolder,'gmaps.txt'))
         self.callPopen(cmd)
 
         
@@ -179,7 +183,22 @@ rm -rf ./tmp
                                                            out
                                                           )
         display(cmd)
-        self.callPopen(cmd,overwrite=True,additionalDisplay=out)        
+        self.callPopen(cmd,overwrite=True,additionalDisplay=out)
+        
+    def runScript(self,saveFolder='./',scriptName='script.sh'):
+        self.saveFolder=saveFolder
+        if (self.saveFolder != './'):
+#             self.callPopen('rm -rf {}'.format(self.saveFolder))
+            self.callPopen('mkdir -p {}'.format(self.saveFolder))
+        script = os.path.join(saveFolder,scriptName)
+        self.callPopen('rm -p {}'.format(script))        
+        with open(script,'w') as f:
+            f.write( self.vmScript )
+        cmd = 'fab -f {} runScript:{}'.format(self.fabfile,
+                                             script
+                                             )
+        display(cmd)
+        self.callPopen(cmd,overwrite=True)
         
         
             
